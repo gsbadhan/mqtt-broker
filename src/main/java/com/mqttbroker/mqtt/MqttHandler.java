@@ -8,10 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-@Component
 public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
     private static final Logger log = LoggerFactory.getLogger(MqttServer.class);
 
@@ -31,8 +31,42 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
             case CONNECT -> handleConnect(ctx, (MqttConnectMessage) message);
             case PINGREQ -> handlePingReq(ctx);
             case SUBSCRIBE -> handleSubscribe(ctx, (MqttSubscribeMessage) message);
+            case UNSUBSCRIBE -> handleUnSubscribe(ctx, (MqttSubscribeMessage) message);
+            case PUBLISH -> handlePublish(ctx, (MqttPublishMessage) message);
+            case DISCONNECT -> handleDisconnect(ctx);
             default -> log.info("Unsupported MQTT message messageType={}", messageType);
         }
+    }
+
+    private void handleUnSubscribe(ChannelHandlerContext ctx, MqttSubscribeMessage message) {
+        String clientId = ctx.channel().attr(MqttAttributes.CLIENT_ID).get();
+        int packetId = message.variableHeader().messageId();
+        log.info("MQTT UNSUBSCRIBE received clientId={} packetId={}", clientId, packetId);
+        for (MqttTopicSubscription topicFilter : message.payload().topicSubscriptions()) {
+            log.info("MQTT unsubscribe clientId={} topicFilter={}", clientId, topicFilter);
+            subscriptionManager.removeSubscription(clientId, topicFilter.topicFilter());
+        }
+        MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.UNSUBACK, false, MqttQoS.AT_MOST_ONCE, false, 0);
+        MqttUnsubAckMessage unsubAck = new MqttUnsubAckMessage(fixedHeader, MqttMessageIdVariableHeader.from(packetId));
+        ctx.writeAndFlush(unsubAck);
+        log.info("MQTT UNSUBACK sent clientId={} packetId={}", clientId, packetId);
+    }
+
+    private void handleDisconnect(ChannelHandlerContext ctx) {
+        String clientId = ctx.channel().attr(MqttAttributes.CLIENT_ID).get();
+        log.info("MQTT DISCONNECT received clientId={}", clientId);
+        ctx.close();
+        subscriptionManager.removeClient(clientId);
+    }
+
+    private void handlePublish(ChannelHandlerContext ctx, MqttPublishMessage message) {
+        String clientId = ctx.channel().attr(MqttAttributes.CLIENT_ID).get();
+        String topic = message.variableHeader().topicName();
+        String payload = message.payload().toString(StandardCharsets.UTF_8);
+        MqttQoS qos = message.fixedHeader().qosLevel();
+        boolean retain = message.fixedHeader().isRetain();
+        boolean dup = message.fixedHeader().isDup();
+        log.info("MQTT PUBLISH received clientId={} topic={} qos={} retain={} dup={} payload={}", clientId, topic, qos, retain, dup, payload);
     }
 
     private void handleSubscribe(ChannelHandlerContext ctx, MqttSubscribeMessage message) {
