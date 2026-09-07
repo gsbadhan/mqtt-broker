@@ -31,20 +31,20 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
             case CONNECT -> handleConnect(ctx, (MqttConnectMessage) message);
             case PINGREQ -> handlePingReq(ctx);
             case SUBSCRIBE -> handleSubscribe(ctx, (MqttSubscribeMessage) message);
-            case UNSUBSCRIBE -> handleUnSubscribe(ctx, (MqttSubscribeMessage) message);
+            case UNSUBSCRIBE -> handleUnSubscribe(ctx, (MqttUnsubscribeMessage) message);
             case PUBLISH -> handlePublish(ctx, (MqttPublishMessage) message);
             case DISCONNECT -> handleDisconnect(ctx);
             default -> log.info("Unsupported MQTT message messageType={}", messageType);
         }
     }
 
-    private void handleUnSubscribe(ChannelHandlerContext ctx, MqttSubscribeMessage message) {
+    private void handleUnSubscribe(ChannelHandlerContext ctx, MqttUnsubscribeMessage message) {
         String clientId = ctx.channel().attr(MqttAttributes.CLIENT_ID).get();
         int packetId = message.variableHeader().messageId();
         log.info("MQTT UNSUBSCRIBE received clientId={} packetId={}", clientId, packetId);
-        for (MqttTopicSubscription topicFilter : message.payload().topicSubscriptions()) {
+        for (String topicFilter : message.payload().topics()) {
             log.info("MQTT unsubscribe clientId={} topicFilter={}", clientId, topicFilter);
-            subscriptionManager.removeSubscription(clientId, topicFilter.topicFilter());
+            subscriptionManager.removeSubscription(clientId, topicFilter);
         }
         MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.UNSUBACK, false, MqttQoS.AT_MOST_ONCE, false, 0);
         MqttUnsubAckMessage unsubAck = new MqttUnsubAckMessage(fixedHeader, MqttMessageIdVariableHeader.from(packetId));

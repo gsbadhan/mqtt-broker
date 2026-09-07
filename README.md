@@ -1,6 +1,6 @@
-# mqtt-broker
+# MQTT Broker
 
-#
+## MQTT client simulator
 ```bash
-mqtt client simulator - https://mqttx.app/downloads?os=macos
+ https://mqttx.app/downloads
 ```

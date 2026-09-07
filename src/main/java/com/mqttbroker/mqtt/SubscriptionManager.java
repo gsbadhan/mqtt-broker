@@ -1,5 +1,7 @@
 package com.mqttbroker.mqtt;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -8,6 +10,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class SubscriptionManager {
+    private static final Logger log = LoggerFactory.getLogger(MqttServer.class);
+
     // clientId -> topic filters
     private final Map<String, Set<String>> subscriptions = new ConcurrentHashMap<>();
 
@@ -32,11 +36,13 @@ public class SubscriptionManager {
 
     public void removeClient(String clientId) {
         Set<String> clientSubscriptions = subscriptions.remove(clientId);
+        log.info("subscriptions for clientId={}",clientId);
         if (clientSubscriptions == null) {
             return;
         }
         for (String topicFilter : clientSubscriptions) {
             Set<String> clients = subscribers.get(topicFilter);
+            log.info("subscriptions for clientId={},topicFilter={}",clientId,topicFilter);
             if (clients != null) {
                 clients.remove(clientId);
                 if (clients.isEmpty()) {
@@ -48,6 +54,7 @@ public class SubscriptionManager {
 
     public void removeSubscription(String clientId, String topicFilter) {
         Set<String> clientSubscriptions = subscriptions.get(clientId);
+        log.info("subscriptions for clientId={},topicFilter={}",clientId,topicFilter);
         if (clientSubscriptions != null) {
             clientSubscriptions.remove(topicFilter);
             if (clientSubscriptions.isEmpty()) {
@@ -56,6 +63,7 @@ public class SubscriptionManager {
         }
 
         Set<String> clients = subscribers.get(topicFilter);
+        log.info("clients for clientId={},topicFilter={}",clientId,topicFilter);
         if (clients != null) {
             clients.remove(clientId);
             if (clients.isEmpty()) {
