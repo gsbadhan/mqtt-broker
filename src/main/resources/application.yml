@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: mqtt-broker
+
+mqtt:
+  broker:
+    host: 0.0.0.0
+    port: 1883
+    boss-threads: 1 # 2 x available CPU cores
+    worker-threads: 8 # 8 x available boss-threads
+
+kafka:
+  bootstrap-servers: localhost:9092
+  topics:
+    device-messages: device_messages
+    acknowledgements: ack_topic
+    confirmed: confirmed_topic
