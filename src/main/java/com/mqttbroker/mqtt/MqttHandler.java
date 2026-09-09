@@ -1,5 +1,6 @@
 package com.mqttbroker.mqtt;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.mqtt.*;
@@ -8,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,10 +18,12 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
     private static final Logger log = LoggerFactory.getLogger(MqttServer.class);
 
     private final SubscriptionManager subscriptionManager;
+    private final QoS2MessageStore qos2MessageStore;
 
     @Autowired
-    public MqttHandler(SubscriptionManager subscriptionManager) {
+    public MqttHandler(SubscriptionManager subscriptionManager, QoS2MessageStore qos2MessageStore) {
         this.subscriptionManager = subscriptionManager;
+        this.qos2MessageStore = qos2MessageStore;
     }
 
     @Override
@@ -33,17 +37,56 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
             case SUBSCRIBE -> handleSubscribe(ctx, (MqttSubscribeMessage) message);
             case UNSUBSCRIBE -> handleUnSubscribe(ctx, (MqttUnsubscribeMessage) message);
             case PUBLISH -> handlePublish(ctx, (MqttPublishMessage) message);
+            case PUBREL -> handlePubRel(ctx, message);
             case DISCONNECT -> handleDisconnect(ctx);
-            default -> log.info("Unsupported MQTT message messageType={}", messageType);
+            default -> log.info("Unsupported MQTT messageType={}", messageType);
         }
     }
 
+    private void handlePubRel(ChannelHandlerContext ctx, MqttMessage message) {
+        String clientId = ctx.channel().attr(MqttAttributes.CLIENT_ID).get();
+        int packetId = ((MqttMessageIdVariableHeader) message.variableHeader()).messageId();
+        QoS2Message qos2Message = qos2MessageStore.get(clientId, packetId);
+        if (qos2Message == null) {
+            log.warn("MQTT PUBREL QoS2 received but QoS2 message not found clientId={} packetId={}", clientId, packetId);
+            sendPubComp(ctx, packetId);
+            return;
+        }
+        /*
+         * NOW process the message.
+         */
+        processPublishQoS2Message(qos2Message);
+        /*
+         * Remove QoS2 state.
+         */
+        qos2MessageStore.remove(clientId, packetId);
+        /*
+         * Complete QoS2 handshake.
+         */
+        sendPubComp(ctx, packetId);
+    }
+
+    private void processPublishQoS2Message(QoS2Message qos2Message) {
+        log.info("start processing MQTT PUBLISH QoS2 message={}", qos2Message);
+    }
+
+    private void sendPubComp(ChannelHandlerContext ctx, int packetId) {
+        MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.PUBCOMP, false, MqttQoS.AT_MOST_ONCE, false, 0);
+        MqttMessageIdVariableHeader variableHeader = MqttMessageIdVariableHeader.from(packetId);
+        MqttMessage pubComp = new MqttMessage(fixedHeader, variableHeader);
+        ctx.writeAndFlush(pubComp);
+        log.info("MQTT PUBCOMP QoS2 sent packetId={}", packetId);
+    }
+
+    /*
+    UNSUBSCRIBE -> UNSUBACK
+     */
     private void handleUnSubscribe(ChannelHandlerContext ctx, MqttUnsubscribeMessage message) {
         String clientId = ctx.channel().attr(MqttAttributes.CLIENT_ID).get();
         int packetId = message.variableHeader().messageId();
         log.info("MQTT UNSUBSCRIBE received clientId={} packetId={}", clientId, packetId);
         for (String topicFilter : message.payload().topics()) {
-            log.info("MQTT unsubscribe clientId={} topicFilter={}", clientId, topicFilter);
+            log.info("MQTT UNSUBSCRIBE clientId={} topicFilter={}", clientId, topicFilter);
             subscriptionManager.removeSubscription(clientId, topicFilter);
         }
         MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.UNSUBACK, false, MqttQoS.AT_MOST_ONCE, false, 0);
@@ -61,13 +104,77 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
 
     private void handlePublish(ChannelHandlerContext ctx, MqttPublishMessage message) {
         String clientId = ctx.channel().attr(MqttAttributes.CLIENT_ID).get();
+        MqttQoS qos = message.fixedHeader().qosLevel();
+        switch (qos) {
+            case AT_MOST_ONCE:
+                handlePublishQoS0(clientId, ctx, message, qos);
+                break;
+            case AT_LEAST_ONCE:
+                handlePublishQoS1(clientId, ctx, message, qos);
+                break;
+            case EXACTLY_ONCE:
+                handlePublishQoS2(clientId, ctx, message, qos);
+                break;
+        }
+    }
+
+    /*
+     * PUBLISH -> PUBREC -> PUBREL -> PUBCOMP
+     */
+    private void handlePublishQoS2(String clientId, ChannelHandlerContext ctx, MqttPublishMessage message, MqttQoS qos) {
+        String topic = message.variableHeader().topicName();
+        int packetId = message.variableHeader().packetId();
+        ByteBuf payload = message.payload().asByteBuf();
+        log.info("MQTT PUBLISH QoS2 received clientId={} packetId={} topic={} qos={}", clientId, packetId, topic, qos);
+        byte[] payloadBytes = new byte[payload.readableBytes()];
+        payload.getBytes(payload.readerIndex(), payloadBytes);
+        /*
+         * Check whether this packet already exists.
+         */
+        if (qos2MessageStore.contains(clientId, packetId)) {
+            log.info("Duplicate MQTT PUBLISH QoS2 received clientId={} packetId={}", clientId, packetId);
+            sendPubRec(ctx, packetId);
+            return;
+        }
+        /*
+         * Store the message.
+         */
+        QoS2Message qos2Message = new QoS2Message(clientId, packetId, topic, payloadBytes);
+        qos2MessageStore.put(qos2Message);
+        log.info("MQTT PUBLISH QoS2 message stored clientId={} packetId={} topic={}", clientId, packetId, topic);
+
+        /*
+         * Tell the publisher that the broker
+         * has received the PUBLISH.
+         */
+        sendPubRec(ctx, packetId);
+    }
+
+    private void sendPubRec(ChannelHandlerContext ctx, int packetId) {
+        MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.PUBREC, false, MqttQoS.AT_MOST_ONCE, false, 0);
+        MqttMessageIdVariableHeader variableHeader =
+                MqttMessageIdVariableHeader.from(packetId);
+        MqttMessage pubRec = new MqttMessage(fixedHeader, variableHeader);
+        ctx.writeAndFlush(pubRec);
+        log.info("MQTT PUBREC sent packetId={}", packetId);
+    }
+
+
+    private void handlePublishQoS1(String clientId, ChannelHandlerContext ctx, MqttPublishMessage message, MqttQoS qos) {
+    }
+
+    /*
+     * PUBLISH -> Nothing
+     */
+    private void handlePublishQoS0(String clientId, ChannelHandlerContext ctx, MqttPublishMessage message, MqttQoS qos) {
         String topic = message.variableHeader().topicName();
         String payload = message.payload().toString(StandardCharsets.UTF_8);
-        MqttQoS qos = message.fixedHeader().qosLevel();
         boolean retain = message.fixedHeader().isRetain();
         boolean dup = message.fixedHeader().isDup();
-        log.info("MQTT PUBLISH received clientId={} topic={} qos={} retain={} dup={} payload={}", clientId, topic, qos, retain, dup, payload);
+        log.info("MQTT PUBLISH QoS0 received clientId={} topic={} qos={} retain={} dup={} payload={}", clientId, topic,
+                qos, retain, dup, payload);
     }
+
 
     private void handleSubscribe(ChannelHandlerContext ctx, MqttSubscribeMessage message) {
         String clientId = ctx.channel().attr(MqttAttributes.CLIENT_ID).get();
