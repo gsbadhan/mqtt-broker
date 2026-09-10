@@ -1,16 +1,16 @@
 package com.mqttbroker.mqtt;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mqttbroker.kafka.Producer;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.mqtt.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,12 +18,19 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
     private static final Logger log = LoggerFactory.getLogger(MqttServer.class);
 
     private final SubscriptionManager subscriptionManager;
+    private final QoS1MessageStore qos1MessageStore;
     private final QoS2MessageStore qos2MessageStore;
+    private final ObjectMapper objectMapper;
+    private final Producer producer;
 
-    @Autowired
-    public MqttHandler(SubscriptionManager subscriptionManager, QoS2MessageStore qos2MessageStore) {
+
+    public MqttHandler(SubscriptionManager subscriptionManager, QoS2MessageStore qos2MessageStore, Producer producer,
+                       QoS1MessageStore qos1MessageStore, ObjectMapper objectMapper) {
         this.subscriptionManager = subscriptionManager;
         this.qos2MessageStore = qos2MessageStore;
+        this.producer = producer;
+        this.qos1MessageStore = qos1MessageStore;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -55,7 +62,8 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
         /*
          * NOW process the message.
          */
-        processPublishQoS2Message(qos2Message);
+        producer.publish(new ConfirmedMqttMessage(null, qos2Message.getClientId(), qos2Message.getPacketId(),
+                qos2Message.getTopic(), qos2Message.getPayload()));
         /*
          * Remove QoS2 state.
          */
@@ -64,10 +72,6 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
          * Complete QoS2 handshake.
          */
         sendPubComp(ctx, packetId);
-    }
-
-    private void processPublishQoS2Message(QoS2Message qos2Message) {
-        log.info("start processing MQTT PUBLISH QoS2 message={}", qos2Message);
     }
 
     private void sendPubComp(ChannelHandlerContext ctx, int packetId) {
@@ -152,8 +156,7 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
 
     private void sendPubRec(ChannelHandlerContext ctx, int packetId) {
         MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.PUBREC, false, MqttQoS.AT_MOST_ONCE, false, 0);
-        MqttMessageIdVariableHeader variableHeader =
-                MqttMessageIdVariableHeader.from(packetId);
+        MqttMessageIdVariableHeader variableHeader = MqttMessageIdVariableHeader.from(packetId);
         MqttMessage pubRec = new MqttMessage(fixedHeader, variableHeader);
         ctx.writeAndFlush(pubRec);
         log.info("MQTT PUBREC sent packetId={}", packetId);
@@ -161,18 +164,66 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
 
 
     private void handlePublishQoS1(String clientId, ChannelHandlerContext ctx, MqttPublishMessage message, MqttQoS qos) {
+        String messageId;
+        String topic = message.variableHeader().topicName();
+        int packetId = message.variableHeader().packetId();
+        ByteBuf payload = message.payload();
+        log.info("MQTT PUBLISH QoS1 received clientId={} packetId={} topic={} qos={}", clientId, packetId, topic, qos);
+        byte[] payloadBytes = new byte[payload.readableBytes()];
+        payload.getBytes(payload.readerIndex(), payloadBytes);
+        try {
+            JsonNode jsonNode = objectMapper.readTree(payloadBytes);
+            messageId = jsonNode.path(MqttAttributes.MESSAGE_ID).asText(null);
+            if (messageId == null || messageId.isBlank()) {
+                log.warn("Missing messageId clientId={} packetId={} topic={}", clientId, packetId, topic);
+                sendPubNack(ctx, packetId, MqttPublishError.PAYLOAD_FORMAT_INVALID);
+                return;
+            }
+        } catch (IOException e) {
+            log.error("error occurred while parsing message clientId={} packetId={}, error={}", clientId, packetId, e);
+            sendPubNack(ctx, packetId, MqttPublishError.PAYLOAD_FORMAT_INVALID);
+            return;
+        }
+        log.info("MQTT PUBLISH QoS1 clientId={} packetId={} messageId={} topic={}", clientId, packetId, messageId, topic);
+
+        // its duplicate and already in processing queue
+        if (qos1MessageStore.contains(messageId, clientId, topic)) {
+            sendPubNack(ctx, packetId, MqttPublishError.DUPLICATE_MESSAGE);
+            return;
+        }
+        producer.publish(new ConfirmedMqttMessage(null, clientId, packetId, topic, payloadBytes));
+        sendPubAck(ctx, packetId);
     }
+
+    private void sendPubAck(ChannelHandlerContext ctx, int packetId) {
+        MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.PUBACK, false, MqttQoS.AT_MOST_ONCE, false, 0);
+        MqttMessageIdVariableHeader variableHeader = MqttMessageIdVariableHeader.from(packetId);
+        MqttMessage pubAck = new MqttMessage(fixedHeader, variableHeader);
+        ctx.writeAndFlush(pubAck);
+        log.info("MQTT PUBACK sent packetId={}", packetId);
+    }
+
+    private void sendPubNack(ChannelHandlerContext ctx, int packetId, MqttPublishError error) {
+        MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.PUBACK, false, MqttQoS.AT_MOST_ONCE, false, 0);
+        MqttMessageIdVariableHeader variableHeader = new MqttPubReplyMessageVariableHeader(packetId, error.getCode(),
+                MqttProperties.NO_PROPERTIES);
+        MqttMessage pubAck = new MqttMessage(fixedHeader, variableHeader);
+        ctx.writeAndFlush(pubAck);
+        log.info("MQTT PUBACK sent with error={}, packetId={}", error, packetId);
+    }
+
 
     /*
      * PUBLISH -> Nothing
      */
     private void handlePublishQoS0(String clientId, ChannelHandlerContext ctx, MqttPublishMessage message, MqttQoS qos) {
         String topic = message.variableHeader().topicName();
-        String payload = message.payload().toString(StandardCharsets.UTF_8);
-        boolean retain = message.fixedHeader().isRetain();
-        boolean dup = message.fixedHeader().isDup();
-        log.info("MQTT PUBLISH QoS0 received clientId={} topic={} qos={} retain={} dup={} payload={}", clientId, topic,
-                qos, retain, dup, payload);
+        int packetId = message.variableHeader().messageId();
+        ByteBuf payload = message.payload();
+        log.info("MQTT PUBLISH QoS0 received clientId={} packetId={} topic={} qos={}", clientId, packetId, topic, qos);
+        byte[] payloadBytes = new byte[payload.readableBytes()];
+        payload.getBytes(payload.readerIndex(), payloadBytes);
+        producer.publish(new ConfirmedMqttMessage(null, clientId, packetId, topic, payloadBytes));
     }
 
 
@@ -186,7 +237,6 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
             return;
         }
         List<Integer> grantedQos = new ArrayList<>();
-
         for (MqttTopicSubscription subscription : message.payload().topicSubscriptions()) {
             String topicFilter = subscription.topicName();
             MqttQoS requestedQos = subscription.qualityOfService();
@@ -206,8 +256,8 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
         String clientId = message.payload().clientIdentifier();
         log.info("MQTT CONNECT from client clientId={}", clientId);
         ctx.channel().attr(MqttAttributes.CLIENT_ID).set(clientId);
-        MqttConnAckVariableHeader variableHeader = new MqttConnAckVariableHeader(MqttConnectReturnCode.CONNECTION_ACCEPTED, false);
         MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.CONNACK, false, MqttQoS.AT_MOST_ONCE, false, 0);
+        MqttConnAckVariableHeader variableHeader = new MqttConnAckVariableHeader(MqttConnectReturnCode.CONNECTION_ACCEPTED, false);
         MqttConnAckMessage connAck = new MqttConnAckMessage(fixedHeader, variableHeader);
         ctx.writeAndFlush(connAck);
     }
