@@ -7,16 +7,20 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.mqtt.*;
+import io.netty.handler.ssl.SslHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.SSLSession;
 import java.io.IOException;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
     private static final Logger log = LoggerFactory.getLogger(MqttServer.class);
-
     private final SubscriptionManager subscriptionManager;
     private final QoS1MessageStore qos1MessageStore;
     private final QoS2MessageStore qos2MessageStore;
@@ -256,12 +260,16 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
     private void handleConnect(ChannelHandlerContext ctx, MqttConnectMessage message) {
         String clientId = message.payload().clientIdentifier();
         log.info("MQTT CONNECT from client clientId={}", clientId);
+        if (isTlsConnection(ctx) && !deviceSecurityCheck(ctx, clientId)) {
+            return;
+        }
         ctx.channel().attr(MqttAttributes.CLIENT_ID).set(clientId);
         MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.CONNACK, false, MqttQoS.AT_MOST_ONCE, false, 0);
         MqttConnAckVariableHeader variableHeader = new MqttConnAckVariableHeader(MqttConnectReturnCode.CONNECTION_ACCEPTED, false);
         MqttConnAckMessage connAck = new MqttConnAckMessage(fixedHeader, variableHeader);
         ctx.writeAndFlush(connAck);
     }
+
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
@@ -285,5 +293,57 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
         MqttMessage pingResp = new MqttMessage(fixedHeader);
         ctx.writeAndFlush(pingResp);
         log.info("MQTT PINGREQ received clientId={} sent PINGRESP", clientId);
+    }
+
+    private boolean isTlsConnection(ChannelHandlerContext ctx) {
+        return ctx.pipeline().get(SslHandler.class) != null;
+    }
+
+    private boolean deviceSecurityCheck(ChannelHandlerContext ctx, String clientId) {
+        String deviceId = getDeviceId(ctx, clientId);
+        if (deviceId == null) {
+            log.warn("No device identity found for clientId={}", clientId);
+            ctx.close();
+            return false;
+        }
+        if (!deviceId.equals(clientId)) {
+            log.warn("Device identity mismatch: certificateDeviceId={}, clientId={}", deviceId, clientId);
+            ctx.close();
+            return false;
+        }
+        log.info("Device authenticated: deviceId={}, clientId={}", deviceId, clientId);
+        ctx.channel().attr(MqttAttributes.DEVICE_ID).set(deviceId);
+        return true;
+    }
+
+    private String getDeviceId(ChannelHandlerContext ctx, String clientId) {
+        SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
+        if (sslHandler == null) {
+            return null;
+        }
+        try {
+            SSLSession session = sslHandler.engine().getSession();
+            Certificate[] certificates = session.getPeerCertificates();
+            if (certificates.length == 0) {
+                log.error("No certificates found for clientId={} !!", clientId);
+                return null;
+            }
+            X509Certificate clientCertificate = (X509Certificate) certificates[0];
+            return extractDeviceId(clientCertificate);
+        } catch (SSLPeerUnverifiedException e) {
+            log.warn("Unable to verify client certificate for clientId={}, error={}", clientId, e);
+            return null;
+        }
+    }
+
+    private String extractDeviceId(X509Certificate certificate) {
+        String subject = certificate.getSubjectX500Principal().getName();
+        for (String part : subject.split(",")) {
+            String[] keyValue = part.trim().split("=", 2);
+            if (keyValue.length == 2 && keyValue[0].equalsIgnoreCase("CN")) {
+                return keyValue[1];
+            }
+        }
+        return null;
     }
 }
