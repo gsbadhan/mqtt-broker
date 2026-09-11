@@ -192,6 +192,7 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
             return;
         }
         producer.publish(new ConfirmedMqttMessage(null, clientId, packetId, topic, payloadBytes));
+        qos1MessageStore.put(new QoS1Message(messageId, clientId, packetId, topic));
         sendPubAck(ctx, packetId);
     }
 

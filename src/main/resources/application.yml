@@ -10,6 +10,7 @@ mqtt:
     worker-threads: 8 # 8 x available boss-threads
 
 kafka:
+  enable: 0 # kafka integration is enable or not, 0-OFF, 1-ON
   bootstrap-servers: localhost:9092
   topics:
     device-messages: device_messages

@@ -11,9 +11,13 @@ public class Producer {
 
     /**
      * Enqueue message for next level processing.
+     *
      * @param message
      */
     public void publish(ConfirmedMqttMessage message) {
-    // Message ready to publish in Kafka processing
+        //producer.submit(message)
+        log.info("kafka publish clientId={}, packetId={}, topic={}", message.getClientId(), message.getPacketId(),
+                message.getTopic());
+
     }
 }
