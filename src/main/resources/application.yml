@@ -9,8 +9,14 @@ mqtt:
     boss-threads: 1 # 2 x available CPU cores
     worker-threads: 8 # 8 x available boss-threads
 
+  tls:
+    enabled: true
+    server-cert: certs/server/server.crt
+    server-key: certs/server/server.key
+    device-ca: certs/device/device-ca.crt
+
 kafka:
-  enable: 0 # kafka integration is enable or not, 0-OFF, 1-ON
+  enabled: 0 # kafka integration is enable or not, 0-OFF, 1-ON
   bootstrap-servers: localhost:9092
   topics:
     device-messages: device_messages
