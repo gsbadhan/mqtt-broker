@@ -32,6 +32,31 @@ mqtts://127.0.0.1:1883
   tls:
     enabled: true
 ```
+## Challenge enable or disable configs
+```
+./src/main/resources/application.yml
+
+    challenge:
+      enabled: true 
+      load-dummy-challenges: true 
+```
+## Challenge message type and request/response
+```
+Topic: $system/challenge
+{
+"type": "CHALLENGE",
+"messageId": "msg-1001",
+"question": "what is model number?"
+}
+
+Topic: $system/challenge
+{
+"type": "CHALLENGE",
+"messageId": "msg-1001",
+"question": "what is model number?",
+"answer": "XX00178"
+}
+```
 
 ## To generate self signed SSL certificate
 - [Server side SSL doc](Server-TLS.md)

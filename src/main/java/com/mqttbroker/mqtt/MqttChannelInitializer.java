@@ -2,6 +2,8 @@ package com.mqttbroker.mqtt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mqttbroker.kafka.Producer;
+import com.mqttbroker.security.DeviceChallenge;
+import com.mqttbroker.security.ValidationInterceptor;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
@@ -19,17 +21,20 @@ public class MqttChannelInitializer extends ChannelInitializer<SocketChannel> {
     private final Producer producer;
     private final ObjectMapper objectMapper;
     private final SslContext mqttSslContext;
+    private ValidationInterceptor validationInterceptor;
 
 
     @Autowired
     public MqttChannelInitializer(SubscriptionManager subscriptionManager, QoS2MessageStore qos2MessageStore,
-                                  Producer producer, QoS1MessageStore qoS1MessageStore, ObjectMapper objectMapper, SslContext mqttSslContext) {
+                                  Producer producer, QoS1MessageStore qoS1MessageStore, ObjectMapper objectMapper,
+                                  SslContext mqttSslContext, ValidationInterceptor validationInterceptor) {
         this.subscriptionManager = subscriptionManager;
         this.qos2MessageStore = qos2MessageStore;
         this.producer = producer;
         this.qoS1MessageStore = qoS1MessageStore;
         this.objectMapper = objectMapper;
         this.mqttSslContext = mqttSslContext;
+        this.validationInterceptor = validationInterceptor;
     }
 
     @Override
@@ -39,6 +44,6 @@ public class MqttChannelInitializer extends ChannelInitializer<SocketChannel> {
         pipeline.addLast("mqttDecoder", new MqttDecoder());
         pipeline.addLast("mqttEncoder", MqttEncoder.INSTANCE);
         pipeline.addLast("mqttHandler", new MqttHandler(subscriptionManager, qos2MessageStore, producer,
-                qoS1MessageStore, objectMapper));
+                qoS1MessageStore, objectMapper, validationInterceptor));
     }
 }
