@@ -1,4 +1,9 @@
 # MQTT Broker
+## Installation requirement
+```
+- Java 21
+- Maven
+```
 
 ## Build MQTT broker
 ```
