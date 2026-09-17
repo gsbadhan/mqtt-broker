@@ -20,7 +20,7 @@ mqtt:
       load-dummy-challenges: true # load dummy challenges for testing, false-OFF, true-ON
     whitelisting:
       allowed-topics: ["system/challenge","/temperature"]
-      allowed-devices: [] # device ids
+      allowed-devices: ["device-001","device-002"] # device ids
 
 kafka:
   enabled: true # kafka integration is enabled or not, false-OFF, true-ON
@@ -28,3 +28,28 @@ kafka:
   topics:
     raw-message-ack-pending: raw-message-ack-pending
     raw-message-process: raw-message-process
+
+cache:
+  in-memory:
+    enabled: true # in-memory cache enabled or not, false-OFF, true-ON
+
+  off-memory:
+    enabled: true # redis based cache enabled or not, false-OFF, true-ON
+    redis:
+      standalone:
+        enabled: true
+        host: 127.0.0.1
+        port: 6379
+      cluster:
+        enabled: false
+        nodes: 10.0.0.1:6379, 10.0.0.2:6379, 10.0.0.3:6379
+        max-redirects: 3
+      retry:
+        connection-failure: 3
+        connection-timeout-ms: 500
+        data-failure: 3
+        data-timeout-ms: 500
+
+
+
+
