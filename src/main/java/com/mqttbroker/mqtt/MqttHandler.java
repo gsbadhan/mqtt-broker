@@ -2,6 +2,7 @@ package com.mqttbroker.mqtt;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mqttbroker.cache.CacheManager;
 import com.mqttbroker.kafka.Producer;
 import com.mqttbroker.security.ValidationInterceptor;
 import io.netty.buffer.ByteBuf;
@@ -24,21 +25,18 @@ import java.util.Optional;
 public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
     private static final Logger log = LoggerFactory.getLogger(MqttServer.class);
     private final SubscriptionManager subscriptionManager;
-    private final QoS1MessageStore qos1MessageStore;
-    private final QoS2MessageStore qos2MessageStore;
     private final ObjectMapper objectMapper;
     private final Producer producer;
     private ValidationInterceptor validationInterceptor;
+    private CacheManager cache;
 
 
-    public MqttHandler(SubscriptionManager subscriptionManager, QoS2MessageStore qos2MessageStore, Producer producer,
-                       QoS1MessageStore qos1MessageStore, ObjectMapper objectMapper, ValidationInterceptor validationInterceptor) {
+    public MqttHandler(SubscriptionManager subscriptionManager, Producer producer, ObjectMapper objectMapper, ValidationInterceptor validationInterceptor, CacheManager cache) {
         this.subscriptionManager = subscriptionManager;
-        this.qos2MessageStore = qos2MessageStore;
         this.producer = producer;
-        this.qos1MessageStore = qos1MessageStore;
         this.objectMapper = objectMapper;
         this.validationInterceptor = validationInterceptor;
+        this.cache = cache;
     }
 
     @Override
@@ -70,7 +68,7 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
     private void handlePubRel(ChannelHandlerContext ctx, MqttMessage message) {
         String clientId = ctx.channel().attr(MqttAttributes.CLIENT_ID).get();
         int packetId = ((MqttMessageIdVariableHeader) message.variableHeader()).messageId();
-        QoS2Message qos2Message = qos2MessageStore.get(clientId, packetId);
+        QoS2Message qos2Message = cache.qoS2Message.get(new QoS2Key(clientId, packetId).toString());
         if (qos2Message == null) {
             log.warn("MQTT PUBREL QoS2 received but QoS2 message not found clientId={} packetId={}", clientId, packetId);
             sendPubComp(ctx, packetId);
@@ -84,7 +82,7 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
         /*
          * Remove QoS2 state.
          */
-        qos2MessageStore.remove(clientId, packetId);
+        cache.qoS2Message.delete(new QoS2Key(clientId, packetId).toString());
         /*
          * Complete QoS2 handshake.
          */
@@ -157,7 +155,7 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
         /*
          * Check whether this packet already exists.
          */
-        if (qos2MessageStore.contains(clientId, packetId)) {
+        if (cache.qoS2Message.contains(new QoS2Key(clientId, packetId).toString())) {
             log.info("Duplicate MQTT PUBLISH QoS2 received clientId={}, packetId={}", clientId, packetId);
             sendPubRec(ctx, packetId);
             return;
@@ -166,7 +164,7 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
          * Store the message.
          */
         QoS2Message qos2Message = new QoS2Message(clientId, packetId, topic, payloadBytes);
-        qos2MessageStore.put(qos2Message);
+        cache.qoS2Message.put(new QoS2Key(clientId, packetId).toString(), qos2Message);
         log.info("MQTT PUBLISH QoS2 message stored clientId={}, packetId={}, topic={}", clientId, packetId, topic);
 
         /*
@@ -215,12 +213,13 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
                 topic);
 
         // its duplicate and already in processing queue
-        if (qos1MessageStore.contains(messageId, clientId, topic)) {
+        if (cache.qoS1Message.contains(new QoS1Key(messageId, clientId, topic).toString())) {
             sendPubNack(ctx, clientId, packetId, topic, MqttPublishError.DUPLICATE_MESSAGE);
             return;
         }
         producer.publish(new ConfirmedMqttMessage(null, clientId, packetId, topic, payloadBytes));
-        qos1MessageStore.put(new QoS1Message(messageId, clientId, packetId, topic));
+        cache.qoS1Message.put(new QoS1Key(messageId, clientId, topic).toString(), new QoS1Message(messageId, clientId
+                , packetId, topic));
         sendPubAck(ctx, clientId, packetId, topic, MqttPublishError.SUCCESS);
     }
 

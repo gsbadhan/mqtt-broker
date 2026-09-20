@@ -1,6 +1,7 @@
 package com.mqttbroker.mqtt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mqttbroker.cache.CacheManager;
 import com.mqttbroker.kafka.Producer;
 import com.mqttbroker.security.DeviceChallenge;
 import com.mqttbroker.security.ValidationInterceptor;
@@ -16,25 +17,23 @@ import org.springframework.stereotype.Component;
 @Component
 public class MqttChannelInitializer extends ChannelInitializer<SocketChannel> {
     private final SubscriptionManager subscriptionManager;
-    private final QoS1MessageStore qoS1MessageStore;
-    private final QoS2MessageStore qos2MessageStore;
     private final Producer producer;
     private final ObjectMapper objectMapper;
     private final SslContext mqttSslContext;
     private ValidationInterceptor validationInterceptor;
+    private CacheManager cache;
 
 
     @Autowired
-    public MqttChannelInitializer(SubscriptionManager subscriptionManager, QoS2MessageStore qos2MessageStore,
-                                  Producer producer, QoS1MessageStore qoS1MessageStore, ObjectMapper objectMapper,
-                                  SslContext mqttSslContext, ValidationInterceptor validationInterceptor) {
+    public MqttChannelInitializer(SubscriptionManager subscriptionManager, Producer producer,
+                                  ObjectMapper objectMapper, SslContext mqttSslContext,
+                                  ValidationInterceptor validationInterceptor, CacheManager cache) {
         this.subscriptionManager = subscriptionManager;
-        this.qos2MessageStore = qos2MessageStore;
         this.producer = producer;
-        this.qoS1MessageStore = qoS1MessageStore;
         this.objectMapper = objectMapper;
         this.mqttSslContext = mqttSslContext;
         this.validationInterceptor = validationInterceptor;
+        this.cache = cache;
     }
 
     @Override
@@ -43,7 +42,7 @@ public class MqttChannelInitializer extends ChannelInitializer<SocketChannel> {
         pipeline.addLast("ssl", mqttSslContext.newHandler(channel.alloc()));
         pipeline.addLast("mqttDecoder", new MqttDecoder());
         pipeline.addLast("mqttEncoder", MqttEncoder.INSTANCE);
-        pipeline.addLast("mqttHandler", new MqttHandler(subscriptionManager, qos2MessageStore, producer,
-                qoS1MessageStore, objectMapper, validationInterceptor));
+        pipeline.addLast("mqttHandler", new MqttHandler(subscriptionManager, producer, objectMapper,
+                validationInterceptor, cache));
     }
 }

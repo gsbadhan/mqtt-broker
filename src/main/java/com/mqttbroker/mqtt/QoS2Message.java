@@ -1,6 +1,8 @@
 package com.mqttbroker.mqtt;
 
-public class QoS2Message {
+import java.io.Serializable;
+
+public class QoS2Message implements Serializable {
     private final String clientId;
     private final int packetId;
     private final String topic;

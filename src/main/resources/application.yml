@@ -16,11 +16,11 @@ mqtt:
       server-key: certs/server/server.key
       device-ca: certs/device/device-ca.crt
     challenge:
-      enabled: true # challenge integration is enabled or not, false-OFF, true-ON
+      enabled: false # challenge integration is enabled or not, false-OFF, true-ON
       load-dummy-challenges: true # load dummy challenges for testing, false-OFF, true-ON
     whitelisting:
-      allowed-topics: ["system/challenge","/temperature"]
-      allowed-devices: ["device-001","device-002"] # device ids
+      allowed-topics: [ "system/challenge","/temperature" ] # full name topics
+      allowed-devices: [ "device-001","device-002" ] # device ids
 
 kafka:
   enabled: true # kafka integration is enabled or not, false-OFF, true-ON
@@ -34,21 +34,34 @@ cache:
     enabled: true # in-memory cache enabled or not, false-OFF, true-ON
 
   off-memory:
-    enabled: true # redis based cache enabled or not, false-OFF, true-ON
+    enabled: true # standalone redis cache enabled or not, false-OFF, true-ON
     redis:
       standalone:
         enabled: true
         host: 127.0.0.1
         port: 6379
       cluster:
-        enabled: false
+        enabled: false # clustered redis cache enabled or not, false-OFF, true-ON
         nodes: 10.0.0.1:6379, 10.0.0.2:6379, 10.0.0.3:6379
         max-redirects: 3
       retry:
         connection-failure: 3
-        connection-timeout-ms: 500
+        connection-timeout: 500ms # format ms, s, m, h, d
         data-failure: 3
-        data-timeout-ms: 500
+        data-timeout: 500ms # format ms, s, m, h, d
+  namespaces:
+    challenge-store:
+      key-ttl: 24h # format ms, s, m, h, d
+      max-cache-size: 1000 # maximum number of keys
+    challenge-status:
+      key-ttl: 24h # format ms, s, m, h, d
+      max-cache-size: 1000 # maximum number of keys
+    qos1-message: # Tracking QoS-1 of message
+      key-ttl: 10m # format ms, s, m, h, d
+      max-cache-size: 1000 # maximum number of keys
+    qos2-message: # Tracking QoS-2 of message
+      key-ttl: 10m # format ms, s, m, h, d
+      max-cache-size: 1000 # maximum number of keys
 
 
 
