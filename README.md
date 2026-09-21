@@ -24,10 +24,16 @@ flowchart LR
     AL -->|store| DB
 
 ```
+## Supported MQTT QoS
+```
+- QoS 0 : No ACK, fire and forget
+- QoS 1 : Receiver send ACK to sender
+- QoS 2 : Both side ACK from sender and receiver
+```
+
 ## Installation requirement
 ```
-- Java 21
-- Maven
+Java 21, Maven, Redis, Apache Kafka
 ```
 
 ## Build MQTT broker
@@ -93,6 +99,27 @@ Topic: $system/challenge
 - [Device side SSL doc](Device-TLS.md)
 - Note: Default certs generated in folder /mqtt-broker/certs/ for server and device.
 
+## Cache integration
+```
+./src/main/resources/application.yml
+
+cache:
+  in-memory:
+    enabled: true # in-memory cache enabled or not, false-OFF, true-ON
+
+  off-memory:
+    enabled: false # standalone redis cache enabled or not, false-OFF, true-ON
+
+```
+
+## Kafka integration
+```
+./src/main/resources/application.yml
+
+kafka:
+  enabled: true # kafka integration is enabled or not, false-OFF, true-ON
+  
+```
 
 
 
