@@ -24,17 +24,34 @@ mqtt:
 
 kafka:
   enabled: true # kafka integration is enabled or not, false-OFF, true-ON
-  bootstrap-servers: localhost:9092
+  bootstrap-servers: "localhost:9092"
+  client-id: "kafka-app"
+  properties:
+    security.protocol: "SASL_SSL"
+    sasl.mechanism: "PLAIN"
+    sasl.jaas.config: "org.apache.kafka.common.security.plain.PlainLoginModule required username='user' password='pass';"
   topics:
-    raw-message-ack-pending: raw-message-ack-pending
-    raw-message-process: raw-message-process
+    confirmed-mqtt-messages:
+      name: "confirmed-mqtt-messages"
+      producer:
+        key-serializer: org.apache.kafka.common.serialization.StringSerializer
+        value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+        acks: all
+        retries: 3
+      consumer:
+        group-id: confirmed-mqtt-messages-grp
+        auto-offset-reset: earliest
+        key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        value-deserializer: org.apache.kafka.common.serialization.StringSerializer
+        retries: 3
+        enable-auto-commit: false
 
 cache:
   in-memory:
     enabled: true # in-memory cache enabled or not, false-OFF, true-ON
 
   off-memory:
-    enabled: true # standalone redis cache enabled or not, false-OFF, true-ON
+    enabled: false # standalone redis cache enabled or not, false-OFF, true-ON
     redis:
       standalone:
         enabled: true
@@ -50,10 +67,10 @@ cache:
         data-failure: 3
         data-timeout: 500ms # format ms, s, m, h, d
   namespaces:
-    challenge-store:
+    challenge-store: # challenge tracking
       key-ttl: 24h # format ms, s, m, h, d
       max-cache-size: 1000 # maximum number of keys
-    challenge-status:
+    challenge-status: # challenge tracking
       key-ttl: 24h # format ms, s, m, h, d
       max-cache-size: 1000 # maximum number of keys
     qos1-message: # Tracking QoS-1 of message
