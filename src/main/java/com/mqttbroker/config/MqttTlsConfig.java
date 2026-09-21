@@ -26,7 +26,7 @@ public class MqttTlsConfig {
     private String deviceCa;
 
     @Bean
-    @ConditionalOnProperty(name = "mqtt.security.tls.enabled", havingValue = "true", matchIfMissing = false)
+    @ConditionalOnProperty(name = "mqtt.security.tls.enabled", havingValue = "true")
     public SslContext mqttSslContext() throws SSLException {
         log.info("loading TLS..");
         return SslContextBuilder.forServer(new File(serverCert), new File(serverKey)).trustManager(new File(deviceCa)).clientAuth(ClientAuth.REQUIRE).build();

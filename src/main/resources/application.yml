@@ -3,6 +3,7 @@ spring:
     name: mqtt-broker
 
 mqtt:
+  enabled: true # MQTT broker is enabled or not, false-OFF, true-ON
   broker:
     host: 0.0.0.0
     port: 1883
@@ -19,13 +20,14 @@ mqtt:
       enabled: false # challenge integration is enabled or not, false-OFF, true-ON
       load-dummy-challenges: true # load dummy challenges for testing, false-OFF, true-ON
     whitelisting:
+      enabled: false # Whitelisting is enabled or not, false-OFF, true-ON
       allowed-topics: [ "system/challenge","/temperature" ] # full name topics
       allowed-devices: [ "device-001","device-002" ] # device ids
 
 kafka:
   enabled: true # kafka integration is enabled or not, false-OFF, true-ON
   bootstrap-servers: "localhost:9092"
-  client-id: "kafka-app"
+  client-id: "mqtt-kafka-app"
   properties:
     security.protocol: "SASL_SSL"
     sasl.mechanism: "PLAIN"
@@ -66,7 +68,7 @@ cache:
         connection-timeout: 500ms # format ms, s, m, h, d
         data-failure: 3
         data-timeout: 500ms # format ms, s, m, h, d
-  namespaces:
+  namespaces: # common namespaces for both type of caches
     challenge-store: # challenge tracking
       key-ttl: 24h # format ms, s, m, h, d
       max-cache-size: 1000 # maximum number of keys
