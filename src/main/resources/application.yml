@@ -29,22 +29,25 @@ kafka:
   bootstrap-servers: "localhost:9092"
   client-id: "mqtt-kafka-app"
   properties:
-    security.protocol: "SASL_SSL"
-    sasl.mechanism: "PLAIN"
-    sasl.jaas.config: "org.apache.kafka.common.security.plain.PlainLoginModule required username='user' password='pass';"
+    security-protocol: "SASL_SSL"
+    sasl-mechanism: "PLAIN"
+    sasl-jaas-config: "org.apache.kafka.common.security.plain.PlainLoginModule required username='user' 
+    password='pass';"
   topics:
     confirmed-mqtt-messages:
       name: "confirmed-mqtt-messages"
       producer:
+        enabled: true
         key-serializer: org.apache.kafka.common.serialization.StringSerializer
         value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
         acks: all
         retries: 3
       consumer:
+        enabled: false
         group-id: confirmed-mqtt-messages-grp
         auto-offset-reset: earliest
         key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-        value-deserializer: org.apache.kafka.common.serialization.StringSerializer
+        value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
         retries: 3
         enable-auto-commit: false
 
