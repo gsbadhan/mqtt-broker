@@ -88,7 +88,9 @@ Java 21, Maven, Redis, Apache Kafka
 
 ## Build MQTT broker
 ```
-mvn clean install
+mvn clean install -Dstart-class=com.mqttbroker.MqttMessageBrokerApp
+or
+mvn clean install -Dstart-class=com.mqttbroker.ConfirmedMqttMessagesConsumerApp
 ```
 
 ## Run standalone MQTT broker
