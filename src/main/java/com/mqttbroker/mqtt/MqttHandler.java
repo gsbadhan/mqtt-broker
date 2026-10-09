@@ -77,8 +77,10 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
         /*
          * NOW process the message.
          */
-        producer.publish(new ConfirmedMqttMessage(null, qos2Message.getClientId(), qos2Message.getPacketId(),
-                qos2Message.getTopic(), qos2Message.getPayload()));
+        if (producer != null) {
+            producer.publish(new ConfirmedMqttMessage(null, qos2Message.getClientId(), qos2Message.getPacketId(),
+                    qos2Message.getTopic(), qos2Message.getPayload()));
+        }
         /*
          * Remove QoS2 state.
          */
@@ -184,7 +186,7 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
 
 
     private void handlePublishQoS1(String clientId, ChannelHandlerContext ctx, MqttPublishMessage message, MqttQoS qos) {
-        String messageId, responseType;
+        String messageId;
         String topic = message.variableHeader().topicName();
         int packetId = message.variableHeader().packetId();
         ByteBuf payload = message.payload();
@@ -213,12 +215,14 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
                 topic);
 
         // its duplicate and already in processing queue
-        if (cache.qoS1Message.contains(new QoS1Key(messageId, clientId, topic).toString())) {
+        if (cache.qoS1Message.contains(new QoS1Key(messageId).toString())) {
             sendPubNack(ctx, clientId, packetId, topic, MqttPublishError.DUPLICATE_MESSAGE);
             return;
         }
-        producer.publish(new ConfirmedMqttMessage(null, clientId, packetId, topic, payloadBytes));
-        cache.qoS1Message.put(new QoS1Key(messageId, clientId, topic).toString(), new QoS1Message(messageId, clientId
+        if (producer != null) {
+            producer.publish(new ConfirmedMqttMessage(null, clientId, packetId, topic, payloadBytes));
+        }
+        cache.qoS1Message.put(new QoS1Key(messageId).toString(), new QoS1Message(messageId, clientId
                 , packetId, topic));
         sendPubAck(ctx, clientId, packetId, topic, MqttPublishError.SUCCESS);
     }
@@ -260,7 +264,9 @@ public class MqttHandler extends SimpleChannelInboundHandler<MqttMessage> {
         }
         byte[] payloadBytes = new byte[payload.readableBytes()];
         payload.getBytes(payload.readerIndex(), payloadBytes);
-        producer.publish(new ConfirmedMqttMessage(null, clientId, packetId, topic, payloadBytes));
+        if (producer != null) {
+            producer.publish(new ConfirmedMqttMessage(null, clientId, packetId, topic, payloadBytes));
+        }
     }
 
 

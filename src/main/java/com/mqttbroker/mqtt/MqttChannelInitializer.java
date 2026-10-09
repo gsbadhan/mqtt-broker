@@ -10,6 +10,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.mqtt.MqttDecoder;
 import io.netty.handler.codec.mqtt.MqttEncoder;
 import io.netty.handler.ssl.SslContext;
+import jakarta.annotation.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -26,8 +27,8 @@ public class MqttChannelInitializer extends ChannelInitializer<SocketChannel> {
 
 
     @Autowired
-    public MqttChannelInitializer(SubscriptionManager subscriptionManager, Producer producer,
-                                  ObjectMapper objectMapper, SslContext mqttSslContext,
+    public MqttChannelInitializer(SubscriptionManager subscriptionManager, @Nullable Producer producer,
+                                  ObjectMapper objectMapper,@Nullable SslContext mqttSslContext,
                                   ValidationInterceptor validationInterceptor, CacheManager cache) {
         this.subscriptionManager = subscriptionManager;
         this.producer = producer;

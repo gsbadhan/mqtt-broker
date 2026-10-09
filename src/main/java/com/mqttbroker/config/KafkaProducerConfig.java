@@ -16,7 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Configuration
-@ConditionalOnProperty(name = "kafka.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "kafka.enabled", havingValue = "true", matchIfMissing = false)
 public class KafkaProducerConfig {
     private final Logger log = LoggerFactory.getLogger(KafkaProducerConfig.class);
     private String confirmedMqttMessageTopic;

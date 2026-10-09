@@ -16,11 +16,11 @@
     <!-- Application log file -->
     <appender name="FILE"
               class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/mqtt-broker.log</file>
+        <file>logs/app.log</file>
         <rollingPolicy
                 class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>
-                logs/mqtt-broker.%d{yyyy-MM-dd}.%i.log.gz
+                logs/app.%d{yyyy-MM-dd}.%i.log.gz
             </fileNamePattern>
             <maxFileSize>100MB</maxFileSize>
             <maxHistory>30</maxHistory>

@@ -3,7 +3,6 @@
 ## MQTT Broker Architecture
 
 ```mermaid
-
 flowchart LR
     D[IoT Device<br/>MQTT Client]
     B[MQTT Broker]
@@ -22,13 +21,64 @@ flowchart LR
     K -->|process| AL
 
     AL -->|store| DB
-
 ```
 ## Supported MQTT QoS
 ```
 - QoS 0 : No ACK, fire and forget
 - QoS 1 : Receiver send ACK to sender
 - QoS 2 : Both side ACK from sender and receiver
+```
+
+## QoS - 0
+```mermaid
+sequenceDiagram
+    participant D as IoT Device
+    participant B as MQTT Broker
+    D->>B: 1. CONNECT
+    D->>B: 2. PUBLISH
+```
+
+## QoS - 1
+```mermaid
+sequenceDiagram
+    participant D as IoT Device
+    participant B as MQTT Broker
+    D->>B: 1. CONNECT
+    D->>B: 2. PUBLISH (messageId)
+    B ->>D:3. PUBACK
+```
+```
+Example of QoS - 1
+
+Topic: /device/temperature
+{
+"messageId": "msg-1001",
+"data": "23",
+"unit": "degree"
+}
+```
+
+## QoS - 2
+```mermaid
+sequenceDiagram
+    participant D as IoT Device
+    participant B as MQTT Broker
+
+    D->>B: 1. CONNECT
+    D->>B: 2. PUBLISH (messageId)
+    B->>D: 3. PUBREC
+    D->>B: 4. PUBREL
+    B->>D: 5. PUBCOMP
+```
+```
+Example of QoS - 1
+
+Topic: /device/temperature
+{
+"messageId": "msg-1001",
+"data": "23",
+"unit": "degree"
+}
 ```
 
 ## Installation requirement

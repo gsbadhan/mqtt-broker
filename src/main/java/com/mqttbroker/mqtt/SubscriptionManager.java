@@ -19,10 +19,7 @@ public class SubscriptionManager {
     private final Map<String, Set<String>> subscribers = new ConcurrentHashMap<>();
 
     public void addSubscription(String clientId, String topicFilter) {
-        // clientId -> topics
         subscriptions.computeIfAbsent(clientId, key -> ConcurrentHashMap.newKeySet()).add(topicFilter);
-
-        // topic -> clients
         subscribers.computeIfAbsent(topicFilter, key -> ConcurrentHashMap.newKeySet()).add(clientId);
     }
 

@@ -12,13 +12,16 @@ import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.stereotype.Component;
 
 @Component
+@ConditionalOnProperty(name = "kafka.enabled", havingValue = "true", matchIfMissing = false)
 public class Consumer {
     private static final Logger log = LoggerFactory.getLogger(Consumer.class);
     @Autowired
     private KafkaListenerEndpointRegistry registry;
 
-    @KafkaListener(topics = "${kafka.topics.confirmed-mqtt-messages.name}", containerFactory =
-            "confirmedMqttMessagesListenerFactory")
+    @KafkaListener(topics = "${kafka.topics.confirmed-mqtt-messages.name}",
+            containerFactory = "confirmedMqttMessagesListenerFactory",
+            autoStartup = "${kafka.topics.confirmed-mqtt-messages.consumer.enabled:false}"
+    )
     public void consume(ConsumerRecord<String, ConfirmedMqttMessage> record) {
         //TODO
     }
